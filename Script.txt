@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+sudo yum update -y
+
+# Installing Software
+
+sudo yum install mariadb-server.x86_64 -y
+sudo amazon-linux-extras install nginx1
+sudo amazon-linux-extras install php7.2
+
+# Starting Services
+
+sudo systemctl enable mariadb 
+sudo systemctl start mariadb 
+sudo systemctl enable nginx 
+sudo systemctl start nginx 
+sudo systemctl enable php-fpm 
+sudo systemctl start php-fpm 
+
+# PHP-FPM configuration is modified to use the nginx user and group instead of apache using sudo sed.
+# The /var/www/ directory is created and ownership is set to the ec2-user.
+# WordPress is downloaded, extracted, and placed in the /var/www/ directory.
+# Permissions are granted to the nginx user to use the /var/www/ directory.
+# MariaDB is configured with an initial root password and security settings.
+
+sudo sed -i 's/user = apache/user = nginx/' /etc/php-fpm.d/www.conf
+sudo sed -i 's/group = apache/group = nginx/' /etc/php-fpm.d/www.conf
+
+sudo mkdir /var/www/
+sudo chown ec2-user:ec2-user /var/www/
+cd /var/www/
+wget http://wordpress.org/latest.tar.gz
+tar -xvf latest.tar.gz
+rm latest.tar.gz
+cd /var/
+
+sudo chown -R nginx:nginx /var/www/
+sudo mysql_install_db
+
+# NGINX Configuration
+# A basic NGINX server block (vhost) configuration is created for hosting WordPress. The configuration specifies the server_name, root directory, and other settings.
+
+cd /tmp/
+sudo echo "server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name wordpress;
+    root /var/www/wordpress;
+    index index.php;
+    # Load configuration files for the default server block.
+    include /etc/nginx/default.d/*.conf;
+}" > wordpress.conf
+sudo chown root:root wordpress.conf
+sudo chmod 644 wordpress.conf
+sudo mv wordpress.conf /etc/nginx/conf.d/
+
+# All services are restarted to apply the configuration changes.
+
+sudo service nginx restart
+sudo service php-fpm restart
+sudo service mariadb restart
